@@ -13,6 +13,10 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # --- Helper Functions ---
+# (Keep get_video_id, ensure_dir_exists, save_json_transcript,
+#  format_srt_timestamp, generate_srt_content, save_text_file,
+#  get_transcript, enhance_with_gemini functions exactly as they were
+#  in the previous version)
 
 def get_video_id(url):
     """Extracts the YouTube video ID from various URL formats."""
@@ -115,7 +119,6 @@ def get_transcript(video_id, preferred_language=None):
     Fetches the transcript for a given video ID as a list of dictionaries.
     Returns the transcript data (list of dicts) and the detected language code.
     """
-    # --- (Keep the existing get_transcript logic as it was) ---
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         transcript = None
@@ -190,7 +193,6 @@ def enhance_with_gemini(transcript_data, target_language_code, original_language
     Sends structured transcript data to Gemini for enhancement, preserving structure.
     Expects and returns data as a list of dictionaries.
     """
-    # --- (Keep the existing enhance_with_gemini logic as it was) ---
     if not api_key:
         print("Error: Gemini API key not found. Set the GEMINI_API_KEY environment variable.")
         return None
@@ -286,8 +288,8 @@ def main():
     parser.add_argument("url", help="The URL of the YouTube video.")
     parser.add_argument("-l", "--language", help="Target language code (e.g., 'en', 'it', 'es', 'fr'). Enhances in original language if omitted.", default=None)
     parser.add_argument("-f", "--format", help="Output format for the enhanced transcript.", choices=['srt', 'json'], default='srt')
-    parser.add_argument("-o", "--output", help="Optional: File path for the ENHANCED transcript. Overrides the default name based on video ID and format.", default=None)
-    parser.add_argument("-s", "--save-original", help="Optional: File path to save the ORIGINAL transcript (JSON format with timestamps).", default=None)
+    parser.add_argument("-o", "--output", help="Optional: File path for the ENHANCED transcript. Overrides the default name.", default=None)
+    parser.add_argument("-s", "--save-original", help="Optional: File path to save the ORIGINAL transcript (JSON format).", default=None)
     parser.add_argument("-k", "--api_key", help="Optional: Gemini API Key (overrides environment variable).", default=None)
 
     args = parser.parse_args()
@@ -306,18 +308,6 @@ def main():
 
     print(f"Processing Video ID: {video_id}")
 
-    # --- Determine Output Filenames ---
-    output_format = args.format.lower()
-    file_extension = f".{output_format}"
-    default_enhanced_filename = f"{video_id}_enhanced{file_extension}"
-    enhanced_output_filepath = args.output if args.output else default_enhanced_filename
-    # Ensure the provided output path has the correct extension if overriding
-    if args.output and not args.output.lower().endswith(file_extension):
-         print(f"Warning: Provided output filename '{args.output}' does not end with '{file_extension}'. Using it as is.")
-         # Or force the extension: enhanced_output_filepath = f"{os.path.splitext(args.output)}{file_extension}"
-
-    original_output_filepath = args.save_original # Stays JSON
-
     # Get Transcript Data
     original_transcript_data, detected_lang = get_transcript(video_id, args.language)
 
@@ -326,18 +316,30 @@ def main():
 
     print(f"Successfully fetched transcript data. Detected language: {detected_lang}. Segments: {len(original_transcript_data)}")
 
+    # Determine target language for Gemini (needed for filename now)
+    target_language = args.language if args.language else detected_lang
+    if not target_language:
+         print("Error: Could not determine a target language for enhancement.")
+         sys.exit(1)
+
+    # --- Determine Output Filenames (Now includes language) ---
+    output_format = args.format.lower()
+    file_extension = f".{output_format}"
+    # Include target language in the default filename
+    default_enhanced_filename = f"{video_id}_{target_language}_enhanced{file_extension}"
+    enhanced_output_filepath = args.output if args.output else default_enhanced_filename
+
+    # Optional check: Warn if user provided -o filename conflicts with expected format/lang?
+    # (Currently, user override is respected without warning)
+
+    original_output_filepath = args.save_original # Stays JSON
+
     # Save Original Transcript if requested (always saves as JSON)
     if original_output_filepath:
         if save_json_transcript(original_transcript_data, original_output_filepath):
              print(f"Original transcript data saved to: {original_output_filepath}")
         else:
              print(f"Failed to save original transcript to {original_output_filepath}")
-
-    # Determine target language for Gemini
-    target_language = args.language if args.language else detected_lang
-    if not target_language:
-         print("Error: Could not determine a target language for enhancement.")
-         sys.exit(1)
 
     # Enhance Transcript Data
     enhanced_transcript_data = enhance_with_gemini(original_transcript_data, target_language, detected_lang, api_key_to_use)
